@@ -1,7 +1,11 @@
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
+from fastapi.responses import FileResponse
 import shutil 
+
 from sqlmodel import Session, select 
 import os
+
+import mimetypes
 
 
 
@@ -54,7 +58,7 @@ def upload_file_to_folder(
 
     # STEP 4: Recording (The Banker's Job)
     new_doc = Document(
-        title = title,
+        title = file.filename,
         file_path = file_path,
         folder_id = folder_id
 
@@ -113,3 +117,28 @@ def delete_folder(folder_id: int, session: Session = Depends(get_session)):
 
     return {"message": f"Folder '{db_folder.name}' and all its files have been deleted."}
 
+
+@app.get("/documents/{document_id}/view")
+def view_document(document_id: int, session: Session = Depends(get_session)):
+    #Find document
+    db_document = session.get(Document,document_id)
+    if not db_document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    mime_type, _ = mimetypes.guess_type(db_document.file_path)
+
+    if not mime_type:
+        mime_type = "application/octet-stream"
+    
+    if not os.path.exists(db_document.file_path):
+        raise HTTPException(status_code=404, detail="Physical file missing from storage")
+    
+    # media_type="application/pdf" helps the browser know to open it in a viewer
+    return FileResponse(
+
+        path=db_document.file_path, 
+        filename=db_document.title,
+        media_type=mime_type
+
+    )
+                  
