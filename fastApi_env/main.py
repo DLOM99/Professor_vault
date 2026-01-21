@@ -6,13 +6,15 @@ from sqlmodel import Session, select
 import os
 
 import mimetypes
-
-
-
+import logging
 
 from models import Folder, Document 
 from database import engine, create_db_and_tables, get_session
 from contextlib import asynccontextmanager
+
+logging.basicConfig(level = logging.INFO)
+logger = logging.getLogger("vault_logger")
+
 
 async def lifespan(app: FastAPI):
     create_db_and_tables()
@@ -106,7 +108,10 @@ def delete_folder(folder_id: int, session: Session = Depends(get_session)):
     
     db_folder = session.get(Folder, folder_id)
     if not db_folder :
+        logger.warning(f"❌ Delete failed: Folder {folder_id} not found.")
         raise HTTPException(status_code=404, detail="Folder not found")
+    
+    logger.info(f"🗑️ Deleting folder: {db_folder.name}")
     
     folder_path = os.path.join("storage", db_folder.name)
     if  os.path.exists(folder_path) :
@@ -114,6 +119,7 @@ def delete_folder(folder_id: int, session: Session = Depends(get_session)):
 
     session.delete(db_folder)
     session.commit()
+    logger.info(f"✅ Successfully deleted folder {folder_id}")
 
     return {"message": f"Folder '{db_folder.name}' and all its files have been deleted."}
 
