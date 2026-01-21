@@ -20,5 +20,5 @@ class Document(SQLModel, table=True):
     title : str = Field(index=True)
     file_path : str 
 # The "Link" to the folder
-    folder_id: int = Field(foreign_key="folder.id")
+    folder_id: int = Field(foreign_key="folder.id" ,ondelete="CASCADE")
     folder: Folder = Relationship(back_populates="documents")

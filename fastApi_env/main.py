@@ -1,7 +1,8 @@
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 import shutil 
-from sqlmodel import Session
+from sqlmodel import Session, select 
 import os
+
 
 
 
@@ -65,6 +66,50 @@ def upload_file_to_folder(
     return {"info": f"File '{file.filename}' saved to {db_folder.name}"}
 
 
+@app.get("/folders/")
+def get_all_folders(session: Session = Depends(get_session)):
+    # 1. Ask the Banker to find all Folder records
+    #session.exec(select(Folder)).all()
 
+    statement  = select(Folder)
 
+    result = session.exec(statement)
+
+    all_folders = result.all()
+
+    return all_folders
+
+@app.get("/folders/{folder_id}/files/")
+def get_all_files(folder_id: int, session: Session = Depends(get_session)):
+
+    db_folder = session.get(Folder,folder_id)
+
+    if not db_folder :
+        raise HTTPException(status_code=404, detail="Folder not found")
+
+    
+
+    statement = select(Document).where( Document.folder_id == folder_id)
+
+    result = session.exec(statement)
+
+    folder_files = result.all()
+
+    return folder_files
+
+@app.post("/folders/{folder_id}/delete")
+def delete_folder(folder_id: int, session: Session = Depends(get_session)):
+    
+    db_folder = session.get(Folder, folder_id)
+    if not db_folder :
+        raise HTTPException(status_code=404, detail="Folder not found")
+    
+    folder_path = os.path.join("storage", db_folder.name)
+    if  os.path.exists(folder_path) :
+       shutil.rmtree(folder_path)
+
+    session.delete(db_folder)
+    session.commit()
+
+    return {"message": f"Folder '{db_folder.name}' and all its files have been deleted."}
 
