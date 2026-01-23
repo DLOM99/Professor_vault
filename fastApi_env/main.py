@@ -1,5 +1,6 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Request
+from fastapi.responses import FileResponse ,HTMLResponse
+from fastapi.templating import Jinja2Templates
 import shutil 
 
 from sqlmodel import Session, select 
@@ -14,6 +15,8 @@ from contextlib import asynccontextmanager
 
 logging.basicConfig(level = logging.INFO)
 logger = logging.getLogger("vault_logger")
+
+templates = Jinja2Templates(directory="templates")
 
 
 async def lifespan(app: FastAPI):
