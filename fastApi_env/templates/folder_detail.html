@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ folder.name }} - Vault</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; background-color: #f4f4f9; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header-section { border-bottom: 2px solid #3498db; padding-bottom: 10px; margin-bottom: 20px; }
+        .file-list { margin-top: 20px; }
+        .file-item { padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .btn { padding: 5px 10px; text-decoration: none; border-radius: 4px; background: #3498db; color: white; cursor: pointer; border: none; font-size: 13px; }
+        .btn-delete { background-color: #e74c3c; margin-left: 5px; }
+        .upload-section { background: #ebf5fb; padding: 15px; border-radius: 4px; margin-top: 20px; }
+        .back-link { display: inline-block; margin-bottom: 15px; color: #3498db; text-decoration: none; }
+        .action-buttons { display: flex; gap: 5px; }
+        
+        /* Search Bar Styling */
+        .search-container { margin-top: 15px; width: 100%; }
+        #searchInput { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Back to All Folders</a>
+        
+        <div class="header-section">
+            <h1>Files in {{ folder.name }}</h1>
+        </div>
+
+        <div class="upload-section">
+            <h3>Upload New Document</h3>
+            <input type="file" id="fileInput">
+            <button onclick="uploadFile()" class="btn" style="background-color: #27ae60;">Upload</button>
+        </div>
+
+        <div class="search-container">
+            <input type="text" id="searchInput" onkeyup="filterFiles()" placeholder="🔍 Search files in this folder...">
+        </div>
+        
+        <div class="file-list" id="fileList">
+            {% if documents %}
+                {% for doc in documents %}
+                <div class="file-item" data-title="{{ doc.title|lower }}">
+                    <span class="file-name-text">{{ doc.title }}</span>
+                    <div class="action-buttons">
+                        <a href="/documents/{{ doc.id }}/view" target="_blank" class="btn">View</a>
+                        <button onclick="deleteDocument('{{ doc.id }}', '{{ doc.title }}')" class="btn btn-delete">Delete</button>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p>No documents found in this folder.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        // Theory: Client-Side Filtering (DOM Manipulation)
+        function filterFiles() {
+            const input = document.getElementById('searchInput');
+            const filter = input.value.toLowerCase();
+            const items = document.getElementsByClassName('file-item');
+
+            // Theory: Linear Search Algorithm
+            // We iterate through every item and toggle visibility based on the match.
+            for (let i = 0; i < items.length; i++) {
+                const title = items[i].getAttribute('data-title');
+                if (title.includes(filter)) {
+                    items[i].style.display = ""; // Show
+                } else {
+                    items[i].style.display = "none"; // Hide from DOM flow
+                }
+            }
+        }
+
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            if (fileInput.files.length === 0) { alert("Please select a file first"); return; }
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            const response = await fetch(`/folders/{{ folder.id }}/upload`, { method: 'POST', body: formData });
+            if (response.ok) { window.location.reload(); } else { alert("Upload failed."); }
+        }
+
+        async function deleteDocument(docId, docTitle) {
+            if (confirm(`Are you sure you want to delete "${docTitle}"?`)) {
+                const response = await fetch(`/documents/${docId}/delete`, { method: 'POST' });
+                if (response.ok) { window.location.reload(); } else { alert("Delete failed."); }
+            }
+        }
+    </script>
+</body>
+</html>

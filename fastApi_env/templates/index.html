@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Professor's Vault</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; background-color: #f4f4f9; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); position: relative; }
+        
+        /* Header styling with button alignment */
+        .header-section { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #3498db; padding-bottom: 10px; margin-bottom: 20px; }
+        h1 { color: #2c3e50; margin: 0; }
+        
+        /* Search Bar Styling */
+        .search-container { margin-bottom: 20px; }
+        #folderSearch { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 16px; }
+
+        .folder-card { display: flex; justify-content: space-between; align-items: center; padding: 15px; border-bottom: 1px solid #eee; }
+        .folder-name { font-size: 1.2em; font-weight: bold; color: #34495e; }
+        
+        .btn { padding: 8px 15px; border-radius: 4px; text-decoration: none; cursor: pointer; border: none; font-size: 14px; }
+        .btn-create { background-color: #27ae60; color: white; }
+        .btn-view { background-color: #3498db; color: white; }
+        .btn-delete { background-color: #e74c3c; color: white; margin-left: 10px; }
+        .btn:hover { opacity: 0.8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header-section">
+            <h1>📁 Professor's Vault</h1>
+            <button onclick="createFolder()" class="btn btn-create">+ Create Folder</button>
+        </div>
+        
+        <div class="search-container">
+            <input type="text" id="folderSearch" onkeyup="filterFolders()" placeholder="🔍 Search course folders...">
+        </div>
+
+        <p>Welcome, Professor. Here are your course folders:</p>
+        
+        <div id="folder-list">
+            {% for folder in folders %}
+            <div class="folder-card" data-name="{{ folder.name|lower }}">
+                <span class="folder-name">{{ folder.name }}</span>
+                <div>
+                    <a href="/folders/{{ folder.id }}" class="btn btn-view">Open Folder</a>
+                    <button onclick="confirmDelete('{{ folder.id }}', '{{ folder.name }}')" class="btn btn-delete">Delete</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <script>
+        // Theory: Client-Side DOM Filtering
+        function filterFolders() {
+            // 1. Capture the input and convert to lowercase for case-insensitive matching
+            const searchTerm = document.getElementById('folderSearch').value.toLowerCase();
+            // 2. Access all folder cards in the list
+            const folders = document.getElementsByClassName('folder-card');
+
+            // 3. Iterative Comparison
+            for (let i = 0; i < folders.length; i++) {
+                const folderName = folders[i].getAttribute('data-name');
+                
+                // Theory: Conditional Visibility
+                // If the folder name contains the search term, keep display as flex (visible)
+                // Otherwise, set to 'none' to remove it from the visual document flow
+                if (folderName.includes(searchTerm)) {
+                    folders[i].style.display = "flex";
+                } else {
+                    folders[i].style.display = "none";
+                }
+            }
+        }
+
+        async function createFolder() {
+            const folderName = prompt("Enter the name of the new folder:");
+            if (folderName) {
+                const response = await fetch(`/folders/?folder_name=${encodeURIComponent(folderName)}`, {
+                    method: 'POST'
+                });
+                if (response.ok) {
+                    window.location.reload();
+                } else {
+                    alert("Failed to create folder.");
+                }
+            }
+        }
+
+        async function confirmDelete(folderId, folderName) {
+            if (confirm(`Are you sure you want to delete "${folderName}" and all its contents?`)) {
+                const response = await fetch(`/folders/${folderId}/delete`, {
+                    method: 'POST'
+                });
+                if (response.ok) {
+                    window.location.reload();
+                } else {
+                    alert("Error: Could not delete the folder.");
+                }
+            }
+        }
+    </script>
+</body>
+</html>

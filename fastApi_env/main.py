@@ -27,6 +27,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+@app.get("/", response_class=HTMLResponse)
+def read_root(request: Request, session: Session = Depends(get_session)):
+    # 1. Get all folders from the database
+    folders = session.exec(select(Folder)).all()
+    
+    # 2. Hand the folders over to the HTML file
+    return templates.TemplateResponse("index.html", {"request": request, "folders": folders})
+
+
 @app.post("/folders/")
 def create_folder(folder_name : str, session : Session = Depends(get_session)):
     new_folder = Folder(name = folder_name)
@@ -43,36 +52,66 @@ def create_folder(folder_name : str, session : Session = Depends(get_session)):
 @app.post("/folders/{folder_id}/upload")
 def upload_file_to_folder(
     folder_id: int,
-    title : str,
-    file : UploadFile = File(...),
+    file : UploadFile = File(...), # Removed 'title: str' as it was redundant
     session : Session = Depends(get_session)
 ):
-    # STEP 1: Verification (Find the folder)
     db_folder = session.get(Folder, folder_id)
-    if not db_folder :
+    if not db_folder:
         raise HTTPException(status_code=404, detail="Folder not found")
     
-
-    # STEP 2: Map Making (Define the path)
+    # 1. Construct path using os.path.join for cross-platform compatibility
     file_path = os.path.join("storage", db_folder.name, file.filename)
 
-    # STEP 3: Physical Move (Save to Disk)
-
-    with open(file_path, "wb") as buffer :
+    # 2. Save the physical file
+    with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # STEP 4: Recording (The Banker's Job)
+    # 3. Create the Database Record (The Theory of Persistence)
     new_doc = Document(
-        title = file.filename,
+        title = file.filename, # Using the original filename as the display title
         file_path = file_path,
         folder_id = folder_id
-
     )
-    session.add(new_doc)
-    session.commit()
-    session.refresh(new_doc)
+    
+    try:
+        session.add(new_doc)
+        session.commit()
+        session.refresh(new_doc)
+    except Exception as e:
+        # If the DB fails, we should remove the file we just saved to stay in sync
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        logger.error(f"Database error: {e}")
+        raise HTTPException(status_code=500, detail="Database save failed")
 
-    return {"info": f"File '{file.filename}' saved to {db_folder.name}"}
+    return {"info": f"File '{file.filename}' saved successfully"}
+
+
+@app.post("/documents/{document_id}/delete")
+def delete_document(document_id: int, session: Session = Depends(get_session)):
+    # 1. Fetch metadata from the database
+    db_document = session.get(Document, document_id)
+    if not db_document:
+        logger.warning(f"❌ Delete failed: Document {document_id} not found.")
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # 2. Theory: Physical Asset Cleanup
+    # Before removing the record, we must delete the file from the OS storage.
+    if os.path.exists(db_document.file_path):
+        try:
+            os.remove(db_document.file_path)
+            logger.info(f"🗑️ Deleted physical file: {db_document.file_path}")
+        except Exception as e:
+            logger.error(f"Error removing file: {e}")
+            # We continue anyway to keep the DB in sync with the missing file
+    
+    # 3. Theory: Persistence Layer Removal
+    # This removes the metadata row from your SQLite table.
+    session.delete(db_document)
+    session.commit()
+    
+    logger.info(f"✅ Successfully deleted document record {document_id}")
+    return {"message": f"Document '{db_document.title}' has been deleted."}
 
 
 @app.get("/folders/")
@@ -129,25 +168,47 @@ def delete_folder(folder_id: int, session: Session = Depends(get_session)):
 
 @app.get("/documents/{document_id}/view")
 def view_document(document_id: int, session: Session = Depends(get_session)):
-    #Find document
-    db_document = session.get(Document,document_id)
+    db_document = session.get(Document, document_id)
     if not db_document:
         raise HTTPException(status_code=404, detail="Document not found")
     
-    mime_type, _ = mimetypes.guess_type(db_document.file_path)
-
-    if not mime_type:
-        mime_type = "application/octet-stream"
-    
     if not os.path.exists(db_document.file_path):
-        raise HTTPException(status_code=404, detail="Physical file missing from storage")
+        raise HTTPException(status_code=404, detail="Physical file missing")
+
+    # 1. Precise MIME Detection
+    mime_type, _ = mimetypes.guess_type(db_document.file_path)
+    mime_type = mime_type or "application/octet-stream"
     
-    # media_type="application/pdf" helps the browser know to open it in a viewer
+    # 2. Get file size for the Content-Length header
+    file_size = os.path.getsize(db_document.file_path)
+
+    # 3. Explicit Header Control
+    # We use 'headers' to provide extra metadata to the browser
+    headers = {
+        "Content-Disposition": f'inline; filename="{db_document.title}"',
+        "Content-Length": str(file_size),
+        "Accept-Ranges": "bytes"  # Tells browser we support skipping through pages
+    }
+
     return FileResponse(
-
         path=db_document.file_path, 
-        filename=db_document.title,
-        media_type=mime_type
-
+        media_type=mime_type,
+        headers=headers
     )
                   
+@app.get("/folders/{folder_id}", response_class=HTMLResponse)
+def view_folder_page(folder_id: int, request: Request, session: Session = Depends(get_session)):
+    # 1. Fetch the folder
+    db_folder = session.get(Folder, folder_id)
+    if not db_folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+
+    # 2. Fetch all documents belonging to this folder
+    statement = select(Document).where(Document.folder_id == folder_id)
+    db_documents = session.exec(statement).all()
+
+    # 3. Render the template
+    return templates.TemplateResponse(
+        "folder_detail.html", 
+        {"request": request, "folder": db_folder, "documents": db_documents}
+    )
